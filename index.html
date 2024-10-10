@@ -1,2 +1,458 @@
-tulis sini bro
-hello world
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catch the Falling Stars with Leaderboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            background-color: #222;
+            color: white;
+        }
+        .container {
+            display: flex;
+        }
+        #gameContainer {
+            text-align: center;
+            margin-right: 30px;
+        }
+        canvas {
+            background-color: #000;
+            display: block;
+            margin: 0 auto;
+            border: 2px solid #fff;
+        }
+        h1 {
+            margin-top: 20px;
+            font-size: 24px;
+        }
+        #score, #duration {
+            font-size: 18px;
+            margin-top: 10px;
+        }
+        #buffTimer {
+            font-size: 14px;
+            color: yellow;
+        }
+        #gameOver {
+            font-size: 24px;
+            color: red;
+            display: none;
+        }
+        #leaderboard {
+            text-align: left;
+            border: 2px solid #fff;
+            padding: 10px;
+            background-color: #333;
+        }
+        #leaderboard h2 {
+            margin-top: 0;
+        }
+        #leaderboard ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        #leaderboard li {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div id="gameContainer">
+            <h1>Catch the Falling Stars with Power-ups</h1>
+            <p id="score">Score: 0</p>
+            <p id="duration">Duration: 0s</p>
+            <p id="buffTimer"></p>
+            <canvas id="gameCanvas" width="400" height="600"></canvas>
+            <p id="gameOver">Game Over! Press F5 to restart.</p>
+        </div>
+
+        <div id="leaderboard">
+            <h2>Leaderboard</h2>
+            <ul id="leaderboardList">
+                <!-- Leaderboard will be populated here -->
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let score = 0;
+        let gameOver = false;
+        let duration = 0; // Time survived by the player
+        let powerUpActive = false;
+        let powerUpTimer;
+        let buffDuration = 0;
+        let fallingSpeed = 2;
+        let debuffActive = false;
+        let leaderboard = JSON.parse(localStorage.getItem('leaderboard')) || []; // Store leaderboard in local storage
+        document.getElementById('score').innerHTML = `Score: ${score}`;
+        
+        // Player Object
+        const player = {
+            width: 80,
+            height: 20,
+            x: canvas.width / 2 - 40,
+            y: canvas.height - 30,
+            speed: 7,
+            dx: 0,
+            smoothSpeed: 0,
+            originalWidth: 80,
+            originalSpeed: 7,
+        };
+
+        // Background Star Animation
+        const backgroundStars = [];
+        function createBackgroundStar() {
+            const x = Math.random() * canvas.width;
+            const size = Math.random() * 3 + 1;
+            const speed = size / 2;
+            backgroundStars.push({ x, y: -size, size, speed });
+        }
+
+        // Star Object (Bintang yang jatuh)
+        const starArray = [];
+        const starSize = 20;
+        
+        // Power-up Object
+        const powerUps = [];
+        const powerUpSize = 20;
+        let powerUpSpeed = 2;
+        
+        // Debuff Object
+        const debuffs = [];
+        const debuffSize = 20;
+        let debuffSpeed = 3;
+        
+        // Create Falling Stars
+        function createStar() {
+            const x = Math.random() * (canvas.width - starSize);
+            starArray.push({ x, y: -starSize });
+        }
+
+        // Create Power-ups and Debuffs
+        function createPowerUp() {
+            const x = Math.random() * (canvas.width - powerUpSize);
+            const type = Math.random() > 0.5 ? 'speed' : 'size'; // Random power-up type
+            powerUps.push({ x, y: -powerUpSize, type });
+        }
+
+        function createDebuff() {
+            const x = Math.random() * (canvas.width - debuffSize);
+            const type = Math.random() > 0.5 ? 'fallSpeed' : 'scorePenalty'; // Random debuff type
+            debuffs.push({ x, y: -debuffSize, type });
+        }
+
+        // Draw Player
+        function drawPlayer() {
+            ctx.fillStyle = 'blue';
+            ctx.beginPath();
+            ctx.roundRect(player.x, player.y, player.width, player.height, 10); // Rounded edges
+            ctx.fill();
+        }
+
+        // Draw Background Stars
+        function drawBackgroundStars() {
+            ctx.fillStyle = 'white';
+            backgroundStars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Draw Falling Stars
+        function drawStars() {
+            ctx.fillStyle = 'yellow';
+            starArray.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x + starSize / 2, star.y + starSize / 2, starSize / 2, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // Draw Power-ups
+        function drawPowerUps() {
+            powerUps.forEach(powerUp => {
+                ctx.fillStyle = powerUp.type === 'speed' ? 'green' : 'purple'; 
+                if (powerUp.type === 'speed') {
+                    ctx.fillRect(powerUp.x, powerUp.y, powerUpSize, powerUpSize); // Square for speed
+                } else {
+                    ctx.fillRect(powerUp.x, powerUp.y, powerUpSize, powerUpSize * 2); // Rectangle for size buff
+                }
+            });
+        }
+
+        // Draw Debuffs
+        function drawDebuffs() {
+            debuffs.forEach(debuff => {
+                ctx.fillStyle = debuff.type === 'fallSpeed' ? 'red' : 'orange';
+                if (debuff.type === 'fallSpeed') {
+                    ctx.beginPath();
+                    ctx.moveTo(debuff.x, debuff.y);
+                    ctx.lineTo(debuff.x + debuffSize, debuff.y);
+                    ctx.lineTo(debuff.x + debuffSize / 2, debuff.y + debuffSize);
+                    ctx.closePath();
+                    ctx.fill(); // Triangle for fall speed debuff
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(debuff.x, debuff.y);
+                    ctx.lineTo(debuff.x + debuffSize / 2, debuff.y + debuffSize);
+                    ctx.lineTo(debuff.x - debuffSize / 2, debuff.y + debuffSize);
+                    ctx.closePath();
+                    ctx.fill(); // Inverted triangle for score penalty
+                }
+            });
+        }
+
+        // Move Player Smoothly
+        function movePlayer() {
+            player.smoothSpeed += (player.dx - player.smoothSpeed) * 0.1; // Smooth acceleration
+            player.x += player.smoothSpeed;
+
+            // Boundary Detection
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+        }
+
+        // Move Background Stars
+        function moveBackgroundStars() {
+            backgroundStars.forEach(star => {
+                star.y += star.speed;
+            });
+            backgroundStars.forEach((star, index) => {
+                if (star.y > canvas.height) {
+                    backgroundStars.splice(index, 1);
+                }
+            });
+        }
+
+        // Move Falling Stars
+        function moveStars() {
+            starArray.forEach(star => {
+                star.y += fallingSpeed;
+            });
+
+            starArray.forEach((star, index) => {
+                if (star.y > canvas.height) {
+                    starArray.splice(index, 1);
+                    if (!gameOver) {
+                        endGame();
+                    }
+                }
+            });
+        }
+
+        // Move Power-ups
+        function movePowerUps() {
+            powerUps.forEach(powerUp => {
+                powerUp.y += powerUpSpeed;
+            });
+
+            powerUps.forEach((powerUp, index) => {
+                if (powerUp.y > canvas.height) {
+                    powerUps.splice(index, 1);
+                }
+            });
+        }
+
+        // Move Debuffs
+        function moveDebuffs() {
+            debuffs.forEach(debuff => {
+                debuff.y += debuffSpeed;
+            });
+
+            debuffs.forEach((debuff, index) => {
+                if (debuff.y > canvas.height) {
+                    debuffs.splice(index, 1);
+                }
+            });
+        }
+
+        // Check Collision with Falling Stars
+        function checkStarCollision() {
+            starArray.forEach((star, index) => {
+                if (
+                    star.y + starSize >= player.y &&
+                    star.x + starSize >= player.x &&
+                    star.x <= player.x + player.width
+                ) {
+                    starArray.splice(index, 1);
+                    score++;
+                    document.getElementById('score').innerHTML = `Score: ${score}`;
+                }
+            });
+        }
+
+        // Check Collision with Power-ups
+        function checkPowerUpCollision() {
+            powerUps.forEach((powerUp, index) => {
+                if (
+                    powerUp.y + powerUpSize >= player.y &&
+                    powerUp.x + powerUpSize >= player.x &&
+                    powerUp.x <= player.x + player.width
+                ) {
+                    activatePowerUp(powerUp.type);
+                    powerUps.splice(index, 1);
+                }
+            });
+        }
+
+        // Check Collision with Debuffs
+        function checkDebuffCollision() {
+            debuffs.forEach((debuff, index) => {
+                if (
+                    debuff.y + debuffSize >= player.y &&
+                    debuff.x + debuffSize >= player.x &&
+                    debuff.x <= player.x + player.width
+                ) {
+                    activateDebuff(debuff.type);
+                    debuffs.splice(index, 1);
+                }
+            });
+        }
+
+        // Activate Power-up
+        function activatePowerUp(type) {
+            if (powerUpActive) return;
+
+            powerUpActive = true;
+            if (type === 'speed') {
+                player.speed = 14;
+            } else if (type === 'size') {
+                player.width = 160;
+            }
+
+            buffDuration = 5;
+            document.getElementById('buffTimer').innerHTML = `Buff active for: ${buffDuration}s`;
+
+            powerUpTimer = setInterval(() => {
+                buffDuration--;
+                document.getElementById('buffTimer').innerHTML = `Buff active for: ${buffDuration}s`;
+                if (buffDuration <= 0) {
+                    clearInterval(powerUpTimer);
+                    player.speed = player.originalSpeed;
+                    player.width = player.originalWidth;
+                    document.getElementById('buffTimer').innerHTML = '';
+                    powerUpActive = false;
+                }
+            }, 1000);
+        }
+
+        // Activate Debuff
+        function activateDebuff(type) {
+            if (debuffActive) return;
+
+            debuffActive = true;
+            if (type === 'fallSpeed') {
+                fallingSpeed += 2;
+            } else if (type === 'scorePenalty') {
+                score -= 2;
+                document.getElementById('score').innerHTML = `Score: ${score}`;
+            }
+
+            setTimeout(() => {
+                if (type === 'fallSpeed') {
+                    fallingSpeed -= 2;
+                }
+                debuffActive = false;
+            }, 5000); // Debuff lasts 5 seconds
+        }
+
+        // End Game Function
+        function endGame() {
+            gameOver = true;
+            document.getElementById('gameOver').style.display = 'block';
+            saveScoreToLeaderboard();
+        }
+
+        // Save Score to Leaderboard
+        function saveScoreToLeaderboard() {
+            const currentPlayer = { score, duration };
+            leaderboard.push(currentPlayer);
+            leaderboard.sort((a, b) => b.score - a.score || b.duration - a.duration); // Sort by score, then by duration
+            leaderboard = leaderboard.slice(0, 5); // Keep top 5
+            localStorage.setItem('leaderboard', JSON.stringify(leaderboard));
+            updateLeaderboard();
+        }
+
+        // Update Leaderboard UI
+        function updateLeaderboard() {
+            const leaderboardList = document.getElementById('leaderboardList');
+            leaderboardList.innerHTML = '';
+            leaderboard.forEach((player, index) => {
+                const li = document.createElement('li');
+                li.textContent = `${index + 1}. Score: ${player.score}, Duration: ${player.duration}s`;
+                leaderboardList.appendChild(li);
+            });
+        }
+
+        // Update the Game Loop
+        function update() {
+            if (!gameOver) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                movePlayer();
+                moveStars();
+                movePowerUps();
+                moveDebuffs();
+                moveBackgroundStars();
+
+                checkStarCollision();
+                checkPowerUpCollision();
+                checkDebuffCollision();
+
+                drawBackgroundStars();
+                drawPlayer();
+                drawStars();
+                drawPowerUps();
+                drawDebuffs();
+
+                requestAnimationFrame(update);
+
+                // Update duration
+                duration++;
+                document.getElementById('duration').innerHTML = `Duration: ${duration}s`;
+            }
+        }
+
+        // Start the Game
+        function startGame() {
+            setInterval(createStar, 1000);
+            setInterval(createPowerUp, 10000);
+            setInterval(createDebuff, 15000);
+            setInterval(createBackgroundStar, 200);
+
+            update();
+        }
+
+        // Keydown Event Listener
+        function keyDown(e) {
+            if (e.key === 'ArrowRight' || e.key === 'Right') {
+                player.dx = player.speed;
+            } else if (e.key === 'ArrowLeft' || e.key === 'Left') {
+                player.dx = -player.speed;
+            }
+        }
+
+        // Keyup Event Listener
+        function keyUp() {
+            player.dx = 0;
+        }
+
+        document.addEventListener('keydown', keyDown);
+        document.addEventListener('keyup', keyUp);
+
+        startGame();
+        updateLeaderboard(); // Initial leaderboard update
+    </script>
+
+</body>
+</html>
