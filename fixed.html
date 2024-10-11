@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center;
+            perspective: 1000px;
+        }
+
+        #timer {
+            font-size: 20px;
+            margin: 10px 0;
+        }
+
+        #tutorial {
+            position: fixed; /* Keep it fixed on the left side */
+            top: 20%; /* Position from the top */
+            left: 20px; /* Position from the left */
+            width: 200px; /* Set a width for the tutorial area */
+            background-color: rgba(255, 255, 255, 0.9); /* Background with some transparency */
+            border: 2px solid #6AAA64; /* Same color as the game tiles */
+            border-radius: 10px;
+            padding: 10px; /* Padding inside the tutorial */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); /* Shadow for a 3D effect */
+            text-align: left; /* Align text to the left */
+            z-index: 100; /* Keep it above the canvas */
+        }
+
+        .popup-hidden {
+            display: none !important; /* Sembunyikan pop-up secara default */
+        }
+
+        .popup-content {
+            background-color: white;
+            border: 2px solid #6AAA64;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .close-btn {
+            cursor: pointer;
+            position: absolute;
+            right: 15px;
+            top: 15px;
+            font-size: 20px;
+        }
+
+        #popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.7); /* Latar belakang transparan */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+
+        hr {
+            width: 500px;
+        }
+
+        #title {
+            font-size: 36px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        #board {
+            width: 350px;
+            height: 420px;
+            margin: 0 auto;
+            margin-top: 3px;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .tile {
+            /* Box */
+            border: 2px solid lightgray;
+            width: 60px;
+            height: 60px;
+            margin: 2.5px;
+
+            /* Text */
+            color: black;
+            font-size: 36px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .tile.flip-3d {
+        animation: flip-3d 0.8s forwards; /* Animasi flip 3D */
+    }
+
+    @keyframes flip-3d {
+        0% {
+            transform: rotateY(0deg);
+        }
+        50% {
+            transform: rotateY(180deg);
+        }
+        100% {
+            transform: rotateY(360deg);
+        }
+    }
+
+    .spark {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background-color: gold;
+        border-radius: 50%;
+        opacity: 0;
+        animation: sparkle 0.8s forwards;
+    }
+
+    @keyframes sparkle {
+        0% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.5);
+        }
+        100% {
+            opacity: 0;
+            transform: scale(0);
+        }
+    }
+
+        .correct {
+            background-color: #6AAA64;
+            color: white;
+            border-color: white;
+        }
+
+        .present {
+            background-color: #C9B458;
+            color: white;
+            border-color: white;
+        }
+
+        .absent {
+            background-color: #787C7E;
+            color: white;
+            border-color: white;
+        }
+
+        .keyboard-row {
+            width: 400px;
+            margin: 0 auto;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .key-tile {
+            width: 36px;
+            height: 40px;
+            margin: 1px;
+            border: 1px solid lightgray;
+
+            /* Text */
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .enter-key-tile {
+            width: 76px;
+            height: 40px;
+            margin: 1px;
+            border: 1px solid lightgray;
+
+            /* Text */
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #backgroundCanvas {
+            position: fixed; /* Memastikan canvas tetap di tempat */
+            top: 0;
+            left: 0;
+            width: 100%; /* Mengisi seluruh lebar jendela */
+            height: 100%; /* Mengisi seluruh tinggi jendela */
+            z-index: -1; /* Menempatkan canvas di belakang elemen lain */
+        }
+        #winMessage {
+            font-size: 48px;
+            color: green;
+            margin-top: 20px;
+            display: none; /* Initially hidden */
+        }
+
+        #restartButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            cursor: pointer;
+            background-color: #6AAA64;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        #restartButton:hover {
+            background-color: #5b9c56;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="backgroundCanvas"></canvas>
+    <h1 id="title">Wordle</h1>
+    <hr>
+    <br>
+    <div id="timer">Time Left: <span id="time">120</span> seconds</div>
+    <div id="board"></div>
+    <br>
+    <h1 id="answer"></h1>
+    
+    <!-- Pop-up window -->
+    <div id="popup" class="popup-hidden">
+        <div class="popup-content">
+            <span class="close-btn" onclick="closePopup()">&times;</span>
+            <h2>Game Over</h2>
+            <p>Your time is up!</p>
+            <button onclick="restartGame()">Try Again</button>
+        </div>
+    </div>
+
+    <div id="winPopup" class="popup-hidden">
+        <div class="popup-content">
+            <span class="close-btn" onclick="closeWinPopup()">&times;</span>
+            <h2>You Win!</h2>
+            <p>Congratulations! You've completed the game.</p>
+            <button onclick="restartGame()">Play Again</button>
+        </div>
+    </div>
+
+    <div id="tutorial">
+        <h2>Tutorial</h2>
+        <p>Guess the word in six attempts.</p>
+        <p>Each guess must be a valid 5-letter word.</p>
+        <p>After each guess, the color of the tiles will change to show how close your guess was to the word.</p>
+        <ul>
+            <li><span style="color: #6AAA64;">Green</span>: Correct letter in the correct position.</li>
+            <li><span style="color: #C9B458;">Yellow</span>: Correct letter in the wrong position.</li>
+            <li><span style="color: #4E5452;">Gray</span>: Letter not in the word.</li>
+        </ul>                
+    </div>
+    
+    
+    <script>
+        var canvas = document.getElementById("backgroundCanvas");
+        var ctx = canvas.getContext("2d");
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Huruf yang akan jatuh
+        var letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        var fontSize = 30;
+        var columns = canvas.width / fontSize; // Menghitung jumlah kolom
+        var drops = Array.from({ length: columns }).fill(0); // Mengatur posisi awal setiap kolom
+
+        // Fungsi untuk menggambar latar belakang
+        function draw() {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)'; // Warna latar belakang
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#d3d3d3'; // Warna huruf
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+                let text = letters.charAt(Math.floor(Math.random() * letters.length));
+                ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+
+                // Atur posisi jatuh
+                if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+                    drops[i] = 0;
+                }
+                drops[i]++;
+            }
+        }
+
+        setInterval(draw, 33); // Menggambar setiap frame
+
+        // Mengatur ukuran canvas ketika jendela diubah
+        window.addEventListener('resize', function() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+        var height = 6; // number of guesses
+        var width = 5; // length of the word
+        var timeLeft = 120; // 2 minutes in seconds
+        var timer; // Variable for the timer
+        var row = 0; // current guess (attempt #)
+        var col = 0; // current letter for that attempt
+        var gameOver = false;
+      
+
+        var wordList = ["cigar", "rebut", "sissy", "humph", "forgo" , "story"];
+        
+        var guessList = [ "cigar", "rebut", "sissy", "humph", "forgo", "story"];
+
+      
+        guessList = guessList.concat(wordList);
+        var word = wordList[Math.floor(Math.random() * wordList.length)].toUpperCase();
+        console.log(word);
+
+        window.onload = function() {
+            intialize();
+            startTimer(); // Start the timer when the game loads
+        }
+
+        function startTimer() {
+            timer = setInterval(function() {
+                timeLeft--;
+                document.getElementById("time").innerText = timeLeft;
+
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    gameOver = true;
+                    document.getElementById("answer").innerText = word;
+                    showPopup();
+                }
+            }, 1000);
+        }
+
+        function showPopup() {
+            document.getElementById("popup").classList.remove("popup-hidden");
+        }
+
+        function closePopup() {
+            document.getElementById("popup").classList.add("popup-hidden");
+            gameOver = false;
+        }
+
+        function restartGame() {
+            location.reload();
+        }
+
+        function showWinPopup() {
+            document.getElementById("winPopup").classList.remove("popup-hidden");
+        }
+
+        function closeWinPopup() {
+            document.getElementById("winPopup").classList.add("popup-hidden");
+            restartGame(); 
+        }
+
+        function intialize() {
+            // Create the game board
+            for (let r = 0; r < height; r++) {
+                for (let c = 0; c < width; c++) {
+                    let tile = document.createElement("span");
+                    tile.id = r.toString() + "-" + c.toString();
+                    tile.classList.add("tile");
+                    tile.innerText = "";
+                    document.getElementById("board").appendChild(tile);
+                }
+            }
+
+            // Create the key board
+            let keyboard = [
+                ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+                ["A", "S", "D", "F", "G", "H", "J", "K", "L", " "],
+                ["Enter", "Z", "X", "C", "V", "B", "N", "M", "⌫" ]
+            ]
+
+            for (let i = 0; i < keyboard.length; i++) {
+                let currRow = keyboard[i];
+                let keyboardRow = document.createElement("div");
+                keyboardRow.classList.add("keyboard-row");
+
+                for (let j = 0; j < currRow.length; j++) {
+                    let keyTile = document.createElement("div");
+
+                    let key = currRow[j];
+                    keyTile.innerText = key;
+                    if (key == "Enter") {
+                        keyTile.id = "Enter";
+                    }
+                    else if (key == "⌫") {
+                        keyTile.id = "Backspace";
+                    }
+                    else if ("A" <= key && key <= "Z") {
+                        keyTile.id = "Key" + key;
+                    } 
+
+                    keyTile.addEventListener("click", processKey);
+
+                    if (key == "Enter") {
+                        keyTile.classList.add("enter-key-tile");
+                    } else {
+                        keyTile.classList.add("key-tile");
+                    }
+                    keyboardRow.appendChild(keyTile);
+                }
+                document.body.appendChild(keyboardRow);
+            }
+
+            // Listen for Key Press
+            document.addEventListener("keyup", (e) => {
+                processInput(e);
+            })
+        }
+
+        function processKey(e) {
+            e = { "code" : this.id };
+            processInput(e);
+        }
+
+        function processInput(e) {
+            if (gameOver) return; 
+
+            if ("KeyA" <= e.code && e.code <= "KeyZ") {
+                if (col < width) {
+                    let currTile = document.getElementById(row.toString() + '-' + col.toString());
+                    if (currTile.innerText == "") {
+                        currTile.innerText = e.code[3];
+                        col += 1;
+                    }
+                }
+            }
+            else if (e.code == "Backspace") {
+                if (0 < col && col <= width) {
+                    col -= 1;
+                }
+                let currTile = document.getElementById(row.toString() + '-' + col.toString());
+                currTile.innerText = "";
+            }
+            else if (e.code == "Enter") {
+                update();
+            }
+
+            if (!gameOver && row == height) {
+                gameOver = true;
+                document.getElementById("answer").innerText = word;
+                showPopup();
+            }
+        }
+
+        function update() {
+            let guess = "";
+            document.getElementById("answer").innerText = "";
+
+            for (let c = 0; c < width; c++) {
+                let currTile = document.getElementById(row.toString() + '-' + c.toString());
+                let letter = currTile.innerText;
+                guess += letter;
+            }
+
+            guess = guess.toLowerCase();
+            console.log(guess);
+
+            if (!guessList.includes(guess)) {
+                document.getElementById("answer").innerText = "Not in word list";
+                return;
+            }
+
+            let correct = 0;
+            let letterCount = {};
+            for (let i = 0; i < word.length; i++) {
+                let letter = word[i];
+
+                if (letterCount[letter]) {
+                    letterCount[letter] += 1;
+                }
+                else {
+                    letterCount[letter] = 1;
+                }
+            }
+
+            console.log(letterCount);
+
+            for (let c = 0; c < width; c++) {
+                let currTile = document.getElementById(row.toString() + '-' + c.toString());
+                let letter = currTile.innerText;
+
+                // Cek jika huruf benar dan di posisi yang benar
+                if (word[c] == letter) {
+                    currTile.classList.add("correct");
+                    currTile.classList.add("flip-3d"); // Tambahkan animasi flip
+                    generateSparks(currTile);
+                    
+                    let keyTile = document.getElementById("Key" + letter);
+                    keyTile.classList.remove("present");
+                    keyTile.classList.add("correct");
+                    
+                    correct += 1;
+                    letterCount[letter] -= 1; // Kurangi hitungan huruf
+                }
+            }
+
+            // Iterasi kedua untuk menangani huruf yang ada tetapi tidak di posisi yang benar
+            for (let c = 0; c < width; c++) {
+                let currTile = document.getElementById(row.toString() + '-' + c.toString());
+                let letter = currTile.innerText;
+
+                // Lewati huruf yang sudah ditandai benar
+                if (!currTile.classList.contains("correct")) {
+                    // Cek jika huruf ada dalam kata dan belum dihitung
+                    if (word.includes(letter) && letterCount[letter] > 0) {
+                        currTile.classList.add("present");
+                        currTile.classList.add("flip-3d"); // Tambahkan animasi flip untuk kotak kuning
+                        
+                        let keyTile = document.getElementById("Key" + letter);
+                        if (!keyTile.classList.contains("correct")) {
+                            keyTile.classList.add("present");
+                        }
+                        letterCount[letter] -= 1; // Kurangi hitungan huruf
+                    } else {
+                        currTile.classList.add("absent");
+                        let keyTile = document.getElementById("Key" + letter);
+                        keyTile.classList.add("absent");
+                    }
+                }
+            }
+
+            if (correct === width) {
+                gameOver = true;
+                document.getElementById("answer").innerText = "Congratulations! You've guessed the word!";
+                showWinPopup(); // Function to show winning popup
+                return; // Exit the function after winning
+            }
+
+            row += 1; //start new row
+            col = 0; //start at 0 for new row
+            if (!gameOver && row == height) {
+                gameOver = true;
+                document.getElementById("answer").innerText = word;
+                showPopup();
+            }
+        }
+
+        function generateSparks(tile) {
+            for (let i = 0; i < 5; i++) {
+                const spark = document.createElement("div");
+                spark.classList.add("spark");
+                spark.style.left = `${Math.random() * 100}%`;
+                spark.style.top = `${Math.random() * 100}%`;
+                tile.appendChild(spark);
+                setTimeout(() => {
+                    spark.remove();
+                }, 800); // remove spark after animation
+            }
+        }
+    </script>
+</body>
+</html>
